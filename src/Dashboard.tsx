@@ -184,9 +184,9 @@ function LightTile({
 
   const pctAt = (clientX: number): number => {
     const el = elRef.current;
-    if (!el) return 0;
+    if (!el) return 1;
     const rect = el.getBoundingClientRect();
-    return clamp(Math.round(((clientX - rect.left) / rect.width) * 100), 0, 100);
+    return clamp(Math.round(((clientX - rect.left) / rect.width) * 100), 1, 100);
   };
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -238,8 +238,20 @@ function LightTile({
           ? 'border-accent bg-accent text-screen'
           : 'border-rule bg-screen text-off-white active:border-edge active:bg-neutral-soft'
       }`}>
-      <DomainIcon entityId={state.entityId} />
-      <div>
+      {swipePct != null && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0"
+          style={{
+            width: `${swipePct}%`,
+            background: 'color-mix(in srgb, var(--color-fg) 22%, transparent)',
+          }}
+        />
+      )}
+      <span className="relative">
+        <DomainIcon entityId={state.entityId} />
+      </span>
+      <div className="relative">
         <div className="truncate text-row font-medium">{friendlyName(state)}</div>
         <div className={`font-mono text-eyebrow tracking-[0.12em] uppercase ${active ? 'text-screen/70' : 'text-dim'}`}>
           {actionLabel(state, 'toggle')}
@@ -247,11 +259,8 @@ function LightTile({
         </div>
       </div>
       {swipePct != null && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-screen/75">
-          <span className="font-display text-5xl font-medium tracking-display text-off-white tabular-nums">
-            {swipePct}
-            <span className="text-3xl">%</span>
-          </span>
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+          <span className="font-mono text-eyebrow tracking-[0.12em] text-off-white tabular-nums">{swipePct}%</span>
         </div>
       )}
     </button>
