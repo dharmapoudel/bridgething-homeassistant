@@ -1,0 +1,27 @@
+{
+  "id": "12371786-2cdb-4c38-9c1b-7c6efd601ea8",
+  "name": "Home Assistant",
+  "version": "0.9.1",
+  "description": "Live tiles and controls for a handful of your Home Assistant entities.",
+  "icon": "icon.svg",
+  "config": [
+    {
+      "type": "string",
+      "data": {
+        "key": "base_url",
+        "label": "Home Assistant URL - a Nabu Casa remote URL works away from home; http://<ip>:8123 only resolves on home WiFi"
+      }
+    },
+    {
+      "type": "secret",
+      "data": {
+        "key": "token",
+        "label": "Long-Lived Access Token (HA profile, bottom of the Security tab)"
+      }
+    }
+  ],
+  "permissions": [
+    "net.ws"
+  ],
+  "settings": "settings.html"
+}
