@@ -5,16 +5,16 @@ type Props = {
   title: string;
   initialH: number;
   initialS: number;
-  /** The light's current brightness — picked colors keep it, the plane's value axis is locked to it. */
-  brightness: number;
-  onPick: (h: number, s: number) => void;
+  /** The light's current brightness — the plane's value axis starts here, so picking a color without dragging vertically leaves brightness untouched. */
+  initialV: number;
+  onPick: (h: number, s: number, v: number) => void;
   onClose: () => void;
 };
 
-type Sel = { h: number; s: number };
+type Sel = { h: number; s: number; v: number };
 
-export default function ColorPicker({ title, initialH, initialS, brightness, onPick, onClose }: Props) {
-  const [sel, setSel] = useState<Sel>({ h: initialH, s: initialS });
+export default function ColorPicker({ title, initialH, initialS, initialV, onPick, onClose }: Props) {
+  const [sel, setSel] = useState<Sel>({ h: initialH, s: initialS, v: initialV });
   const selRef = useRef<Sel>(sel);
   const planeRef = useRef<HTMLDivElement | null>(null);
   const hueRef = useRef<HTMLDivElement | null>(null);
@@ -26,29 +26,31 @@ export default function ColorPicker({ title, initialH, initialS, brightness, onP
     setSel(next);
   };
 
-  const satAt = (clientX: number): number | null => {
+  const planePos = (clientX: number, clientY: number): Sel | null => {
     const el = planeRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    return Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100));
+    const s = Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100));
+    const v = Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 1, 100));
+    return { ...selRef.current, s, v };
   };
 
   const onPlaneDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     planeDrag.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const s = satAt(e.clientX);
-    if (s != null) applySel({ ...selRef.current, s });
+    const next = planePos(e.clientX, e.clientY);
+    if (next) applySel(next);
   };
   const onPlaneMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
-    const s = satAt(e.clientX);
-    if (s != null) applySel({ ...selRef.current, s });
+    const next = planePos(e.clientX, e.clientY);
+    if (next) applySel(next);
   };
   const onPlaneUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
     planeDrag.current = null;
     const s = selRef.current;
-    onPick(s.h, s.s);
+    onPick(s.h, s.s, s.v);
   };
 
   const hueAt = (clientX: number): number | null => {
@@ -73,24 +75,24 @@ export default function ColorPicker({ title, initialH, initialS, brightness, onP
     if (hueDrag.current !== e.pointerId) return;
     hueDrag.current = null;
     const s = selRef.current;
-    onPick(s.h, s.s);
+    onPick(s.h, s.s, s.v);
   };
 
-  const [r, g, b] = hsvToRgb(sel.h, sel.s, brightness);
+  const [r, g, b] = hsvToRgb(sel.h, sel.s, sel.v);
   const hex = rgbToHex(r, g, b);
   const hueCss = `hsl(${sel.h}, 100%, 50%)`;
 
   return (
     <div className="absolute inset-0 z-50 bg-bg">
-      <div className="flex h-full flex-col px-6 pt-4 pb-5">
-        <div className="mb-3 flex items-center justify-between">
+      <div className="flex h-full flex-col px-10 pt-6 pb-8">
+        <div className="mb-4 flex items-center justify-between">
           <div className="truncate font-display text-title font-medium tracking-display text-off-white">
             {title}
           </div>
           <button
             onClick={onClose}
             aria-label="close color picker"
-            className="px-3 py-1 text-2xl leading-none text-dim active:text-off-white">
+            className="px-6 py-3 text-4xl leading-none text-dim active:text-off-white">
             x
           </button>
         </div>
@@ -111,7 +113,7 @@ export default function ColorPicker({ title, initialH, initialS, brightness, onP
             className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
             style={{
               left: `${sel.s}%`,
-              top: `${100 - brightness}%`,
+              top: `${100 - sel.v}%`,
               background: `rgb(${r}, ${g}, ${b})`,
             }}
           />
@@ -127,7 +129,7 @@ export default function ColorPicker({ title, initialH, initialS, brightness, onP
             touchAction: 'none',
             background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
           }}
-          className="relative mt-3 h-9 w-full cursor-crosshair rounded-md select-none">
+          className="relative mt-4 h-9 w-full cursor-crosshair rounded-md select-none">
           <div
             aria-hidden
             className="absolute top-1/2 h-11 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
@@ -135,7 +137,7 @@ export default function ColorPicker({ title, initialH, initialS, brightness, onP
           />
         </div>
 
-        <div className="mt-3 flex gap-3">
+        <div className="mt-4 flex gap-3">
           <Readout label="HEX" value={hex} wide />
           <Readout label="R" value={String(r)} />
           <Readout label="G" value={String(g)} />
