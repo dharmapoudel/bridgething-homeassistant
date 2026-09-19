@@ -75,3 +75,18 @@ export function brightnessPct(s: HaState): number | null {
 export function num(attr: unknown): number | null {
   return typeof attr === 'number' && Number.isFinite(attr) ? attr : null;
 }
+
+const COLOR_MODES = new Set(['hs', 'xy', 'rgb', 'rgbw', 'rgbww']);
+
+export function supportsColor(s: HaState): boolean {
+  const modes = s.attributes['supported_color_modes'];
+  return Array.isArray(modes) && modes.some(m => typeof m === 'string' && COLOR_MODES.has(m));
+}
+
+export function hsColor(s: HaState): [number, number] | null {
+  const hs = s.attributes['hs_color'];
+  if (Array.isArray(hs) && typeof hs[0] === 'number' && typeof hs[1] === 'number') {
+    return [hs[0], hs[1]];
+  }
+  return null;
+}

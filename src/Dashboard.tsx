@@ -1,6 +1,16 @@
-import { memo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { memo, useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Tile } from './App';
-import { brightnessPct, controlKind, domainOf, friendlyName, isActive, num } from './domains';
+import ColorPicker from './ColorPicker';
+import {
+  brightnessPct,
+  controlKind,
+  domainOf,
+  friendlyName,
+  hsColor,
+  isActive,
+  num,
+  supportsColor,
+} from './domains';
 import type { HaState, HaStatus } from './ha';
 import { DomainIcon } from './icons';
 
@@ -11,6 +21,7 @@ type Props = {
   onActivate: (s: HaState) => void;
   onSetTemp: (entityId: string, target: number) => void;
   onSetBrightness: (entityId: string, pct: number) => void;
+  onSetColor: (entityId: string, h: number, s: number, v: number) => void;
   onOpenPicker: () => void;
 };
 
@@ -31,10 +42,16 @@ export default function Dashboard({
   onActivate,
   onSetTemp,
   onSetBrightness,
+  onSetColor,
   onOpenPicker,
 }: Props) {
   const live = tiles.some(t => t.state);
   const shape = gridShape(tiles.length);
+  const [colorPicker, setColorPicker] = useState<{ entityId: string; state: HaState } | null>(null);
+  const openColorPicker = useCallback(
+    (entityId: string, state: HaState) => setColorPicker({ entityId, state }),
+    [],
+  );
   if (!live && status.kind === 'error') return <FullError message={status.message} />;
 
   return (
@@ -60,21 +77,32 @@ export default function Dashboard({
             maxWidth: `${shape.cols * TILE_MAX_REM + (shape.cols - 1) * 0.75 + 3}rem`,
           }}>
           {tiles.map(t => (
-            <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} />
+            <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
           ))}
         </div>
       ) : (
         <div className="grid flex-1 grid-flow-col grid-rows-3 auto-cols-44 gap-3 overflow-x-auto px-6 pb-5">
           {tiles.map(t => (
-            <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} />
+            <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
           ))}
         </div>
       )}
 
       {toast && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[60] flex justify-center">
           <div className="border border-edge bg-screen px-5 py-2 font-mono text-hint text-near">{toast}</div>
         </div>
+      )}
+
+      {colorPicker && (
+        <ColorPicker
+          title={friendlyName(colorPicker.state)}
+          initialH={hsColor(colorPicker.state)?.[0] ?? 35}
+          initialS={hsColor(colorPicker.state)?.[1] ?? 0}
+          initialV={brightnessPct(colorPicker.state) ?? 100}
+          onPick={(h, s, v) => onSetColor(colorPicker.entityId, h, s, v)}
+          onClose={() => setColorPicker(null)}
+        />
       )}
     </div>
   );
@@ -85,6 +113,8 @@ type TileProps = {
   onActivate: Props['onActivate'];
   onSetTemp: Props['onSetTemp'];
   onSetBrightness: Props['onSetBrightness'];
+  onSetColor: Props['onSetColor'];
+  onOpenColorPicker: (entityId: string, state: HaState) => void;
 };
 
 export function sameTile(a: Tile, b: Tile): boolean {
@@ -107,11 +137,13 @@ const TileView = memo(TileBody, (a: TileProps, b: TileProps) => {
     a.onActivate === b.onActivate &&
     a.onSetTemp === b.onSetTemp &&
     a.onSetBrightness === b.onSetBrightness &&
+    a.onSetColor === b.onSetColor &&
+    a.onOpenColorPicker === b.onOpenColorPicker &&
     sameTile(a.tile, b.tile)
   );
 });
 
-function TileBody({ tile, onActivate, onSetTemp, onSetBrightness }: TileProps) {
+function TileBody({ tile, onActivate, onSetTemp, onSetBrightness, onOpenColorPicker }: TileProps) {
   const { entityId, state } = tile;
   if (!state || state.state === 'unavailable') {
     return (
@@ -129,7 +161,15 @@ function TileBody({ tile, onActivate, onSetTemp, onSetBrightness }: TileProps) {
   if (kind === 'climate') return <ClimateTile tile={tile} state={state} onSetTemp={onSetTemp} />;
   if (kind === 'readonly') return <ReadonlyTile state={state} />;
   if (domainOf(entityId) === 'light')
-    return <LightTile tile={tile} state={state} onActivate={onActivate} onSetBrightness={onSetBrightness} />;
+    return (
+      <LightTile
+        tile={tile}
+        state={state}
+        onActivate={onActivate}
+        onSetBrightness={onSetBrightness}
+        onLongPress={() => onOpenColorPicker(entityId, state)}
+      />
+    );
   return <ActionTile state={state} kind={kind} onActivate={onActivate} />;
 }
 
@@ -163,24 +203,39 @@ function ActionTile({
   );
 }
 
+const LONG_PRESS_MS = 550;
+const LONG_PRESS_MOVE_PX = 10;
+
 function LightTile({
   tile,
   state,
   onActivate,
   onSetBrightness,
+  onLongPress,
 }: {
   tile: Tile;
   state: HaState;
   onActivate: Props['onActivate'];
   onSetBrightness: Props['onSetBrightness'];
+  onLongPress: () => void;
 }) {
   const elRef = useRef<HTMLButtonElement | null>(null);
-  const dragRef = useRef<{ id: number; startX: number; swiping: boolean } | null>(null);
+  const dragRef = useRef<{ id: number; startX: number; startY: number; swiping: boolean } | null>(null);
   const swipedRef = useRef(false);
+  const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [swipePct, setSwipePct] = useState<number | null>(null);
 
   const active = isActive(state);
   const brightness = tile.pendingBrightness ?? brightnessPct(state);
+  const fillPct = swipePct ?? brightness;
+  const canColorPick = supportsColor(state);
+
+  const clearLongTimer = () => {
+    if (longTimer.current != null) {
+      clearTimeout(longTimer.current);
+      longTimer.current = null;
+    }
+  };
 
   const pctAt = (clientX: number): number => {
     const el = elRef.current;
@@ -191,13 +246,36 @@ function LightTile({
 
   const handlePointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
     swipedRef.current = false;
-    dragRef.current = { id: e.pointerId, startX: e.clientX, swiping: false };
+    clearLongTimer();
+    dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, swiping: false };
     elRef.current?.setPointerCapture(e.pointerId);
+    if (canColorPick) {
+      const pid = e.pointerId;
+      longTimer.current = setTimeout(() => {
+        longTimer.current = null;
+        dragRef.current = null;
+        setSwipePct(null);
+        swipedRef.current = true; // suppress the tap that follows the lift
+        try {
+          elRef.current?.releasePointerCapture(pid);
+        } catch {
+          /* already released */
+        }
+        onLongPress();
+      }, LONG_PRESS_MS);
+    }
   };
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
     if (!drag || e.pointerId !== drag.id) return;
+    if (
+      longTimer.current != null &&
+      (Math.abs(e.clientX - drag.startX) > LONG_PRESS_MOVE_PX ||
+        Math.abs(e.clientY - drag.startY) > LONG_PRESS_MOVE_PX)
+    ) {
+      clearLongTimer();
+    }
     if (!drag.swiping) {
       if (Math.abs(e.clientX - drag.startX) < SWIPE_THRESHOLD_PX) return;
       drag.swiping = true;
@@ -208,6 +286,7 @@ function LightTile({
   const endDrag = (e: ReactPointerEvent<HTMLButtonElement>, commit: boolean) => {
     const drag = dragRef.current;
     dragRef.current = null;
+    clearLongTimer();
     setSwipePct(null);
     if (!drag || e.pointerId !== drag.id) return;
     if (drag.swiping && commit) {
@@ -232,18 +311,19 @@ function LightTile({
       onPointerMove={handlePointerMove}
       onPointerUp={e => endDrag(e, true)}
       onPointerCancel={e => endDrag(e, false)}
+      onContextMenu={e => e.preventDefault()}
       style={{ touchAction: 'pan-y' }}
       className={`relative flex flex-col justify-between border p-4 text-left select-none ${
         active
           ? 'border-accent bg-accent text-screen'
           : 'border-rule bg-screen text-off-white active:border-edge active:bg-neutral-soft'
       }`}>
-      {swipePct != null && (
+      {fillPct != null && (
         <div
           aria-hidden
           className="pointer-events-none absolute inset-y-0 left-0"
           style={{
-            width: `${swipePct}%`,
+            width: `${fillPct}%`,
             background: 'color-mix(in srgb, var(--color-fg) 22%, transparent)',
           }}
         />
@@ -260,7 +340,7 @@ function LightTile({
       </div>
       {swipePct != null && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <span className="font-mono text-eyebrow tracking-[0.12em] text-off-white tabular-nums">{swipePct}%</span>
+          <span className="font-mono text-hint tracking-[0.12em] text-off-white tabular-nums">{swipePct}%</span>
         </div>
       )}
     </button>
