@@ -230,18 +230,14 @@ export default function App() {
   );
 
   const handleSetColor = useCallback(
-    (entityId: string, h: number, s: number, v: number) => {
+    (entityId: string, h: number, s: number) => {
       const conn = connRef.current;
       if (!conn) return;
-      setPendingBrightness(prev => ({ ...prev, [entityId]: v }));
       setOverlay(prev => ({ ...prev, [entityId]: 'on' }));
-      conn
-        .callService('light', 'turn_on', { hs_color: [h, s], brightness_pct: v }, { entity_id: entityId })
-        .catch(e => {
-          setPendingBrightness(prev => dropKey(prev, entityId));
-          setOverlay(prev => dropKey(prev, entityId));
-          flash(errText(e));
-        });
+      conn.callService('light', 'turn_on', { hs_color: [h, s] }, { entity_id: entityId }).catch(e => {
+        setOverlay(prev => dropKey(prev, entityId));
+        flash(errText(e));
+      });
     },
     [flash],
   );

@@ -5,15 +5,16 @@ type Props = {
   title: string;
   initialH: number;
   initialS: number;
-  initialV: number;
-  onPick: (h: number, s: number, v: number) => void;
+  /** The light's current brightness — picked colors keep it, the plane's value axis is locked to it. */
+  brightness: number;
+  onPick: (h: number, s: number) => void;
   onClose: () => void;
 };
 
-type Sel = { h: number; s: number; v: number };
+type Sel = { h: number; s: number };
 
-export default function ColorPicker({ title, initialH, initialS, initialV, onPick, onClose }: Props) {
-  const [sel, setSel] = useState<Sel>({ h: initialH, s: initialS, v: initialV });
+export default function ColorPicker({ title, initialH, initialS, brightness, onPick, onClose }: Props) {
+  const [sel, setSel] = useState<Sel>({ h: initialH, s: initialS });
   const selRef = useRef<Sel>(sel);
   const planeRef = useRef<HTMLDivElement | null>(null);
   const hueRef = useRef<HTMLDivElement | null>(null);
@@ -25,32 +26,29 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
     setSel(next);
   };
 
-  const planePos = (clientX: number, clientY: number): { s: number; v: number } | null => {
+  const satAt = (clientX: number): number | null => {
     const el = planeRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    return {
-      s: Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100)),
-      v: Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 1, 100)),
-    };
+    return Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100));
   };
 
   const onPlaneDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     planeDrag.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const p = planePos(e.clientX, e.clientY);
-    if (p) applySel({ ...selRef.current, s: p.s, v: p.v });
+    const s = satAt(e.clientX);
+    if (s != null) applySel({ ...selRef.current, s });
   };
   const onPlaneMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
-    const p = planePos(e.clientX, e.clientY);
-    if (p) applySel({ ...selRef.current, s: p.s, v: p.v });
+    const s = satAt(e.clientX);
+    if (s != null) applySel({ ...selRef.current, s });
   };
   const onPlaneUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
     planeDrag.current = null;
     const s = selRef.current;
-    onPick(s.h, s.s, s.v);
+    onPick(s.h, s.s);
   };
 
   const hueAt = (clientX: number): number | null => {
@@ -75,25 +73,25 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
     if (hueDrag.current !== e.pointerId) return;
     hueDrag.current = null;
     const s = selRef.current;
-    onPick(s.h, s.s, s.v);
+    onPick(s.h, s.s);
   };
 
-  const [r, g, b] = hsvToRgb(sel.h, sel.s, sel.v);
+  const [r, g, b] = hsvToRgb(sel.h, sel.s, brightness);
   const hex = rgbToHex(r, g, b);
   const hueCss = `hsl(${sel.h}, 100%, 50%)`;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div
-        className="w-[620px] max-w-[94%] rounded-2xl border border-rule p-5"
-        style={{ background: 'color-mix(in srgb, var(--color-fg) 10%, var(--color-screen))' }}>
-        <div className="mb-4 flex items-center justify-between">
-          <div className="truncate font-display text-title font-medium tracking-display text-off-white">{title}</div>
+    <div className="absolute inset-0 z-50 bg-bg">
+      <div className="flex h-full flex-col px-6 pt-4 pb-5">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="truncate font-display text-title font-medium tracking-display text-off-white">
+            {title}
+          </div>
           <button
             onClick={onClose}
             aria-label="close color picker"
-            className="flex size-10 items-center justify-center rounded-full border border-edge text-xl text-near active:bg-neutral-soft">
-            ✕
+            className="px-3 py-1 text-2xl leading-none text-dim active:text-off-white">
+            x
           </button>
         </div>
 
@@ -107,11 +105,15 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
             touchAction: 'none',
             background: `linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, ${hueCss})`,
           }}
-          className="relative h-52 w-full cursor-crosshair rounded-lg select-none">
+          className="relative w-full flex-1 cursor-crosshair rounded-lg select-none">
           <div
             aria-hidden
             className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
-            style={{ left: `${sel.s}%`, top: `${100 - sel.v}%`, background: `rgb(${r}, ${g}, ${b})` }}
+            style={{
+              left: `${sel.s}%`,
+              top: `${100 - brightness}%`,
+              background: `rgb(${r}, ${g}, ${b})`,
+            }}
           />
         </div>
 
@@ -123,8 +125,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           onPointerCancel={onHueUp}
           style={{
             touchAction: 'none',
-            background:
-              'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+            background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
           }}
           className="relative mt-3 h-9 w-full cursor-crosshair rounded-md select-none">
           <div
@@ -134,7 +135,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           />
         </div>
 
-        <div className="mt-4 flex gap-3">
+        <div className="mt-3 flex gap-3">
           <Readout label="HEX" value={hex} wide />
           <Readout label="R" value={String(r)} />
           <Readout label="G" value={String(g)} />
@@ -148,10 +149,10 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
 function Readout({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
     <div className={wide ? 'flex-1' : 'w-20'}>
-      <div className="rounded-lg bg-black/40 px-3 py-2.5 text-center font-mono text-body text-off-white tabular-nums">
+      <div className="rounded-lg bg-black/40 px-3 py-2 text-center font-mono text-body text-off-white tabular-nums">
         {value}
       </div>
-      <div className="mt-1.5 text-center font-mono text-eyebrow tracking-[0.2em] text-dim uppercase">{label}</div>
+      <div className="mt-1 text-center font-mono text-eyebrow tracking-[0.2em] text-dim uppercase">{label}</div>
     </div>
   );
 }

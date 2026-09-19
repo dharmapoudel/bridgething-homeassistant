@@ -21,7 +21,7 @@ type Props = {
   onActivate: (s: HaState) => void;
   onSetTemp: (entityId: string, target: number) => void;
   onSetBrightness: (entityId: string, pct: number) => void;
-  onSetColor: (entityId: string, h: number, s: number, v: number) => void;
+  onSetColor: (entityId: string, h: number, s: number) => void;
   onOpenPicker: () => void;
 };
 
@@ -99,8 +99,8 @@ export default function Dashboard({
           title={friendlyName(colorPicker.state)}
           initialH={hsColor(colorPicker.state)?.[0] ?? 35}
           initialS={hsColor(colorPicker.state)?.[1] ?? 0}
-          initialV={brightnessPct(colorPicker.state) ?? 100}
-          onPick={(h, s, v) => onSetColor(colorPicker.entityId, h, s, v)}
+          brightness={brightnessPct(colorPicker.state) ?? 100}
+          onPick={(h, s) => onSetColor(colorPicker.entityId, h, s)}
           onClose={() => setColorPicker(null)}
         />
       )}
