@@ -5,87 +5,71 @@ type Props = {
   title: string;
   initialH: number;
   initialS: number;
-  /** The light's current brightness. Locked for the picker's lifetime: picking a color never changes brightness. */
+  /**
+   * The light's current saturation and brightness. Both are locked for the
+   * picker's lifetime: dragging changes hue only, so picking a color can never
+   * change the light's intensity. (A white light reports saturation 0, which
+   * would leave no color to pick, so we fall back to full saturation there.)
+   */
   initialV: number;
   onPick: (h: number, s: number, v: number) => void;
   onClose: () => void;
 };
 
-type Sel = { h: number; s: number; v: number };
-
 export default function ColorPicker({ title, initialH, initialS, initialV, onPick, onClose }: Props) {
-  const [sel, setSel] = useState<Sel>({ h: initialH, s: initialS, v: initialV });
-  const selRef = useRef<Sel>(sel);
+  const sLock = initialS >= 20 ? Math.round(initialS) : 100;
+  const [h, setH] = useState<number>(Math.round(initialH));
+  const hRef = useRef(h);
   const planeRef = useRef<HTMLDivElement | null>(null);
-  const hueRef = useRef<HTMLDivElement | null>(null);
-  const planeDrag = useRef<number | null>(null);
-  const hueDrag = useRef<number | null>(null);
+  const dragId = useRef<number | null>(null);
 
-  const applySel = (next: Sel) => {
-    selRef.current = next;
-    setSel(next);
+  const applyH = (nh: number) => {
+    hRef.current = nh;
+    setH(nh);
   };
 
-  // Plane is hue (horizontal) x saturation (vertical). Brightness stays locked
-  // at initialV: drags change hue and saturation only, never brightness.
-  const planePos = (clientX: number, clientY: number): Sel | null => {
-    const el = planeRef.current;
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    const h = Math.round(clamp(((clientX - rect.left) / rect.width) * 360, 0, 360));
-    const s = Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 0, 100));
-    return { ...selRef.current, h, s };
-  };
-
-  const onPlaneDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    planeDrag.current = e.pointerId;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const next = planePos(e.clientX, e.clientY);
-    if (next) applySel(next);
-  };
-  const onPlaneMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (planeDrag.current !== e.pointerId) return;
-    const next = planePos(e.clientX, e.clientY);
-    if (next) applySel(next);
-  };
-  const onPlaneUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (planeDrag.current !== e.pointerId) return;
-    planeDrag.current = null;
-    const s = selRef.current;
-    onPick(s.h, s.s, s.v);
-  };
-
+  // The plane is hue only (horizontal). Vertical drags are intentionally
+  // ignored: saturation and brightness stay locked, so the light's intensity
+  // can never change from dragging.
   const hueAt = (clientX: number): number | null => {
-    const el = hueRef.current;
+    const el = planeRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     return Math.round(clamp(((clientX - rect.left) / rect.width) * 360, 0, 360));
   };
 
-  const onHueDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    hueDrag.current = e.pointerId;
+  const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    dragId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const h = hueAt(e.clientX);
-    if (h != null) applySel({ ...selRef.current, h });
+    const nh = hueAt(e.clientX);
+    if (nh != null) applyH(nh);
   };
-  const onHueMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (hueDrag.current !== e.pointerId) return;
-    const h = hueAt(e.clientX);
-    if (h != null) applySel({ ...selRef.current, h });
+  const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragId.current !== e.pointerId) return;
+    const nh = hueAt(e.clientX);
+    if (nh != null) applyH(nh);
   };
-  const onHueUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (hueDrag.current !== e.pointerId) return;
-    hueDrag.current = null;
-    const s = selRef.current;
-    onPick(s.h, s.s, s.v);
+  const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragId.current !== e.pointerId) return;
+    dragId.current = null;
+    onPick(hRef.current, sLock, initialV);
   };
 
-  const [r, g, b] = hsvToRgb(sel.h, sel.s, sel.v);
+  // Hue ramp rendered at the locked saturation, so the plane shows exactly the
+  // colors the dot can pick. Darkens toward the bottom as brightness context;
+  // the dot sits at the height of the light's current brightness.
+  const stops: string[] = [];
+  for (let hh = 0; hh <= 360; hh += 30) {
+    const [sr, sg, sb] = hsvToRgb(hh, sLock, 100);
+    stops.push(`rgb(${sr}, ${sg}, ${sb}) ${(hh / 360) * 100}%`);
+  }
+
+  const [r, g, b] = hsvToRgb(h, sLock, initialV);
   const hex = rgbToHex(r, g, b);
 
   return (
     <div className="absolute inset-0 z-50 bg-bg">
-      <div className="flex h-full flex-col px-14 pt-10 pb-12">
+      <div className="flex h-full flex-col pl-14 pr-20 pt-10 pb-12">
         <div className="mb-6 flex items-center gap-4">
           <button
             type="button"
@@ -99,41 +83,23 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
 
         <div
           ref={planeRef}
-          onPointerDown={onPlaneDown}
-          onPointerMove={onPlaneMove}
-          onPointerUp={onPlaneUp}
-          onPointerCancel={onPlaneUp}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerCancel={onUp}
           style={{
             touchAction: 'none',
-            background: `linear-gradient(to bottom, transparent, #fff), linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)`,
+            background: `linear-gradient(to bottom, transparent, rgba(0,0,0,0.85)), linear-gradient(to right, ${stops.join(', ')})`,
           }}
           className="relative w-full flex-1 cursor-crosshair rounded-lg select-none">
           <div
             aria-hidden
             className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
             style={{
-              left: `${(sel.h / 360) * 100}%`,
-              top: `${100 - sel.s}%`,
+              left: `${(h / 360) * 100}%`,
+              top: `${100 - initialV}%`,
               background: `rgb(${r}, ${g}, ${b})`,
             }}
-          />
-        </div>
-
-        <div
-          ref={hueRef}
-          onPointerDown={onHueDown}
-          onPointerMove={onHueMove}
-          onPointerUp={onHueUp}
-          onPointerCancel={onHueUp}
-          style={{
-            touchAction: 'none',
-            background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
-          }}
-          className="relative mt-6 h-9 w-full cursor-crosshair rounded-md select-none">
-          <div
-            aria-hidden
-            className="absolute top-1/2 h-11 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
-            style={{ left: `${(sel.h / 360) * 100}%` }}
           />
         </div>
 
