@@ -26,23 +26,26 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
     setSel(next);
   };
 
-  const planePos = (clientX: number): Sel | null => {
+  // Plane is hue (horizontal) x saturation (vertical). Brightness stays locked
+  // at initialV: drags change hue and saturation only, never brightness.
+  const planePos = (clientX: number, clientY: number): Sel | null => {
     const el = planeRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const s = Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100));
-    return { ...selRef.current, s };
+    const h = Math.round(clamp(((clientX - rect.left) / rect.width) * 360, 0, 360));
+    const s = Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 0, 100));
+    return { ...selRef.current, h, s };
   };
 
   const onPlaneDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     planeDrag.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const next = planePos(e.clientX);
+    const next = planePos(e.clientX, e.clientY);
     if (next) applySel(next);
   };
   const onPlaneMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
-    const next = planePos(e.clientX);
+    const next = planePos(e.clientX, e.clientY);
     if (next) applySel(next);
   };
   const onPlaneUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -79,12 +82,11 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
 
   const [r, g, b] = hsvToRgb(sel.h, sel.s, sel.v);
   const hex = rgbToHex(r, g, b);
-  const hueCss = `hsl(${sel.h}, 100%, 50%)`;
 
   return (
     <div className="absolute inset-0 z-50 bg-bg">
-      <div className="flex h-full flex-col px-10 pt-6 pb-8">
-        <div className="mb-4 flex items-center gap-3">
+      <div className="flex h-full flex-col px-14 pt-10 pb-12">
+        <div className="mb-6 flex items-center gap-4">
           <button
             type="button"
             onClick={onClose}
@@ -103,15 +105,15 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           onPointerCancel={onPlaneUp}
           style={{
             touchAction: 'none',
-            background: `linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, ${hueCss})`,
+            background: `linear-gradient(to bottom, transparent, #fff), linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)`,
           }}
           className="relative w-full flex-1 cursor-crosshair rounded-lg select-none">
           <div
             aria-hidden
             className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
             style={{
-              left: `${sel.s}%`,
-              top: `${100 - sel.v}%`,
+              left: `${(sel.h / 360) * 100}%`,
+              top: `${100 - sel.s}%`,
               background: `rgb(${r}, ${g}, ${b})`,
             }}
           />
@@ -127,7 +129,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
             touchAction: 'none',
             background: 'linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
           }}
-          className="relative mt-4 h-9 w-full cursor-crosshair rounded-md select-none">
+          className="relative mt-6 h-9 w-full cursor-crosshair rounded-md select-none">
           <div
             aria-hidden
             className="absolute top-1/2 h-11 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
@@ -135,7 +137,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           />
         </div>
 
-        <div className="mt-4 flex gap-3">
+        <div className="mt-6 flex gap-4">
           <Readout label="HEX" value={hex} wide />
           <Readout label="R" value={String(r)} />
           <Readout label="G" value={String(g)} />
