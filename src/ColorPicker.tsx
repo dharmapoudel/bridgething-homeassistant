@@ -5,7 +5,7 @@ type Props = {
   title: string;
   initialH: number;
   initialS: number;
-  /** The light's current brightness — the plane's value axis starts here, so picking a color without dragging vertically leaves brightness untouched. */
+  /** The light's current brightness. Locked for the picker's lifetime: picking a color never changes brightness. */
   initialV: number;
   onPick: (h: number, s: number, v: number) => void;
   onClose: () => void;
@@ -26,24 +26,23 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
     setSel(next);
   };
 
-  const planePos = (clientX: number, clientY: number): Sel | null => {
+  const planePos = (clientX: number): Sel | null => {
     const el = planeRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
     const s = Math.round(clamp(((clientX - rect.left) / rect.width) * 100, 0, 100));
-    const v = Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 1, 100));
-    return { ...selRef.current, s, v };
+    return { ...selRef.current, s };
   };
 
   const onPlaneDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     planeDrag.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const next = planePos(e.clientX, e.clientY);
+    const next = planePos(e.clientX);
     if (next) applySel(next);
   };
   const onPlaneMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (planeDrag.current !== e.pointerId) return;
-    const next = planePos(e.clientX, e.clientY);
+    const next = planePos(e.clientX);
     if (next) applySel(next);
   };
   const onPlaneUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -85,16 +84,15 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
   return (
     <div className="absolute inset-0 z-50 bg-bg">
       <div className="flex h-full flex-col px-10 pt-6 pb-8">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="truncate font-display text-title font-medium tracking-display text-off-white">
-            {title}
-          </div>
+        <div className="mb-4 flex items-center gap-3">
           <button
+            type="button"
             onClick={onClose}
-            aria-label="close color picker"
-            className="px-6 py-3 text-4xl leading-none text-dim active:text-off-white">
-            x
+            aria-label="back"
+            className="flex size-9 items-center justify-center border border-rule text-near transition active:bg-neutral-soft">
+            <BackIcon />
           </button>
+          <div className="truncate font-mono text-eyebrow tracking-[0.25em] text-dim uppercase">{title}</div>
         </div>
 
         <div
@@ -156,5 +154,13 @@ function Readout({ label, value, wide }: { label: string; value: string; wide?: 
       </div>
       <div className="mt-1 text-center font-mono text-eyebrow tracking-[0.2em] text-dim uppercase">{label}</div>
     </div>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
