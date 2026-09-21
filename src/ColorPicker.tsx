@@ -57,11 +57,13 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
     onPick(hsRef.current.h, hsRef.current.s, vLock);
   };
 
-  // Plane background: hue ramp (horizontal) at full saturation and the locked
-  // brightness, fading vertically to the locked-brightness gray (s = 0).
+  // Plane background: vivid hue ramp (horizontal) at full saturation and full
+  // brightness for picking, fading vertically to the locked-brightness gray
+  // (s = 0). The fade starts from transparent gray -- never the `transparent`
+  // keyword, which interpolates through black and washes the plane out.
   const stops: string[] = [];
   for (let hh = 0; hh <= 360; hh += 30) {
-    const [sr, sg, sb] = hsvToRgb(hh, 100, vLock);
+    const [sr, sg, sb] = hsvToRgb(hh, 100, 100);
     stops.push(`rgb(${sr}, ${sg}, ${sb}) ${(hh / 360) * 100}%`);
   }
   const gv = Math.round((vLock / 100) * 255);
@@ -91,7 +93,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           onPointerCancel={onUp}
           style={{
             touchAction: 'none',
-            background: `linear-gradient(to bottom, transparent, rgb(${gv}, ${gv}, ${gv})), linear-gradient(to right, ${stops.join(', ')})`,
+            background: `linear-gradient(to bottom, rgba(${gv}, ${gv}, ${gv}, 0), rgb(${gv}, ${gv}, ${gv})), linear-gradient(to right, ${stops.join(', ')})`,
           }}
           className="relative w-full flex-1 cursor-crosshair rounded-lg select-none">
           <div
