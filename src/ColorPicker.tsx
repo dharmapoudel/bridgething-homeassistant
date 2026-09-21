@@ -6,10 +6,10 @@ type Props = {
   initialH: number;
   initialS: number;
   /**
-   * The light's current saturation and brightness. Both are locked for the
-   * picker's lifetime: dragging changes hue only, so picking a color can never
-   * change the light's intensity. (A white light reports saturation 0, which
-   * would leave no color to pick, so we fall back to full saturation there.)
+   * The light's current brightness, locked for the picker's lifetime. The
+   * plane is hue (horizontal) x saturation (vertical); the brightness sent
+   * on pick is always initialV, so picking a color can never change the
+   * light's brightness.
    */
   initialV: number;
   onPick: (h: number, s: number, v: number) => void;
@@ -17,54 +17,56 @@ type Props = {
 };
 
 export default function ColorPicker({ title, initialH, initialS, initialV, onPick, onClose }: Props) {
-  const sLock = initialS >= 20 ? Math.round(initialS) : 100;
-  const [h, setH] = useState<number>(Math.round(initialH));
-  const hRef = useRef(h);
+  const vLock = Math.round(clamp(initialV, 0, 100));
+  const startH = Math.round(clamp(initialH, 0, 360));
+  const startS = Math.round(clamp(initialS, 0, 100));
+  const [h, setH] = useState<number>(startH);
+  const [s, setS] = useState<number>(startS);
+  const hsRef = useRef({ h: startH, s: startS });
   const planeRef = useRef<HTMLDivElement | null>(null);
   const dragId = useRef<number | null>(null);
 
-  const applyH = (nh: number) => {
-    hRef.current = nh;
-    setH(nh);
-  };
-
-  // The plane is hue only (horizontal). Vertical drags are intentionally
-  // ignored: saturation and brightness stay locked, so the light's intensity
-  // can never change from dragging.
-  const hueAt = (clientX: number): number | null => {
+  // 2D plane: horizontal drags pick hue, vertical drags pick saturation
+  // (vivid at the top, white at the bottom). Brightness is never touched
+  // here; it stays locked at vLock.
+  const applyAt = (clientX: number, clientY: number) => {
     const el = planeRef.current;
-    if (!el) return null;
+    if (!el) return;
     const rect = el.getBoundingClientRect();
-    return Math.round(clamp(((clientX - rect.left) / rect.width) * 360, 0, 360));
+    const nh = Math.round(clamp(((clientX - rect.left) / rect.width) * 360, 0, 360));
+    const ns = Math.round(clamp((1 - (clientY - rect.top) / rect.height) * 100, 0, 100));
+    hsRef.current = { h: nh, s: ns };
+    setH(nh);
+    setS(ns);
   };
 
   const onDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     dragId.current = e.pointerId;
     e.currentTarget.setPointerCapture(e.pointerId);
-    const nh = hueAt(e.clientX);
-    if (nh != null) applyH(nh);
+    applyAt(e.clientX, e.clientY);
   };
   const onMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (dragId.current !== e.pointerId) return;
-    const nh = hueAt(e.clientX);
-    if (nh != null) applyH(nh);
+    applyAt(e.clientX, e.clientY);
   };
   const onUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (dragId.current !== e.pointerId) return;
     dragId.current = null;
-    onPick(hRef.current, sLock, initialV);
+    // Brightness is always the locked initialV: picking a color can never
+    // change the light's brightness.
+    onPick(hsRef.current.h, hsRef.current.s, vLock);
   };
 
-  // Hue ramp rendered at the locked saturation, so the plane shows exactly the
-  // colors the dot can pick. Darkens toward the bottom as brightness context;
-  // the dot sits at the height of the light's current brightness.
+  // Plane background: hue ramp (horizontal) at full saturation and the locked
+  // brightness, fading vertically to the locked-brightness gray (s = 0).
   const stops: string[] = [];
   for (let hh = 0; hh <= 360; hh += 30) {
-    const [sr, sg, sb] = hsvToRgb(hh, sLock, 100);
+    const [sr, sg, sb] = hsvToRgb(hh, 100, vLock);
     stops.push(`rgb(${sr}, ${sg}, ${sb}) ${(hh / 360) * 100}%`);
   }
+  const gv = Math.round((vLock / 100) * 255);
 
-  const [r, g, b] = hsvToRgb(h, sLock, initialV);
+  const [r, g, b] = hsvToRgb(h, s, vLock);
   const hex = rgbToHex(r, g, b);
 
   return (
@@ -89,7 +91,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
           onPointerCancel={onUp}
           style={{
             touchAction: 'none',
-            background: `linear-gradient(to bottom, transparent, rgba(0,0,0,0.85)), linear-gradient(to right, ${stops.join(', ')})`,
+            background: `linear-gradient(to bottom, transparent, rgb(${gv}, ${gv}, ${gv})), linear-gradient(to right, ${stops.join(', ')})`,
           }}
           className="relative w-full flex-1 cursor-crosshair rounded-lg select-none">
           <div
@@ -97,7 +99,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
             className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_1px_6px_rgba(0,0,0,0.6)]"
             style={{
               left: `${(h / 360) * 100}%`,
-              top: `${100 - initialV}%`,
+              top: `${(1 - s / 100) * 100}%`,
               background: `rgb(${r}, ${g}, ${b})`,
             }}
           />
