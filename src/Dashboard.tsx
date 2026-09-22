@@ -1,6 +1,7 @@
 import { memo, useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Tile } from './App';
 import ColorPicker from './ColorPicker';
+import { useIsPortrait } from './usePortrait';
 import {
   brightnessPct,
   controlKind,
@@ -27,12 +28,19 @@ type Props = {
 
 const TILE_MAX_REM = 16;
 const MAX_COLS_ON_SCREEN = 4;
+const MAX_COLS_PORTRAIT = 2;
+const MAX_ROWS_ON_SCREEN = 3;
+const MAX_ROWS_PORTRAIT = 5;
 const SWIPE_THRESHOLD_PX = 12;
 
-function gridShape(count: number): { cols: number; rows: number; fits: boolean } {
-  const rows = count <= 2 ? 1 : Math.min(3, Math.max(2, Math.ceil(count / MAX_COLS_ON_SCREEN)));
+function gridShape(count: number, portrait: boolean): { cols: number; rows: number; fits: boolean } {
+  // Landscape formula is unchanged: max 4 columns, max 3 rows.
+  // Portrait caps at 2 columns so tiles stay usable at 480px wide.
+  const maxCols = portrait ? MAX_COLS_PORTRAIT : MAX_COLS_ON_SCREEN;
+  const maxRows = portrait ? MAX_ROWS_PORTRAIT : MAX_ROWS_ON_SCREEN;
+  const rows = count <= 2 ? 1 : Math.min(maxRows, Math.max(2, Math.ceil(count / maxCols)));
   const cols = Math.ceil(count / rows);
-  return { cols, rows, fits: cols <= MAX_COLS_ON_SCREEN };
+  return { cols, rows, fits: cols <= maxCols };
 }
 
 export default function Dashboard({
@@ -46,7 +54,8 @@ export default function Dashboard({
   onOpenPicker,
 }: Props) {
   const live = tiles.some(t => t.state);
-  const shape = gridShape(tiles.length);
+  const portrait = useIsPortrait();
+  const shape = gridShape(tiles.length, portrait);
   const [colorPicker, setColorPicker] = useState<{ entityId: string; state: HaState } | null>(null);
   const openColorPicker = useCallback(
     (entityId: string, state: HaState) => setColorPicker({ entityId, state }),
@@ -76,6 +85,14 @@ export default function Dashboard({
             gridTemplateRows: `repeat(${shape.rows}, minmax(0,1fr))`,
             maxWidth: `${shape.cols * TILE_MAX_REM + (shape.cols - 1) * 0.75 + 3}rem`,
           }}>
+          {tiles.map(t => (
+            <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
+          ))}
+        </div>
+      ) : portrait ? (
+        <div
+          className="mx-auto grid w-full flex-1 auto-rows-[minmax(9rem,auto)] grid-cols-2 gap-3 overflow-y-auto px-6 pb-5"
+          style={{ maxWidth: `${2 * TILE_MAX_REM + (2 - 1) * 0.75 + 3}rem` }}>
           {tiles.map(t => (
             <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
           ))}

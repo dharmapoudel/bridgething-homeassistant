@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { clamp, hsvToRgb, rgbToHex } from './color';
+import { useIsPortrait } from './usePortrait';
 
 type Props = {
   title: string;
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export default function ColorPicker({ title, initialH, initialS, initialV, onPick, onClose }: Props) {
+  const portrait = useIsPortrait();
   const vLock = Math.round(clamp(initialV, 0, 100));
   const startH = Math.round(clamp(initialH, 0, 360));
   const startS = Math.round(clamp(initialS, 0, 100));
@@ -73,7 +75,7 @@ export default function ColorPicker({ title, initialH, initialS, initialV, onPic
 
   return (
     <div className="absolute inset-0 z-50 bg-bg">
-      <div className="flex h-full flex-col pl-14 pr-20 pt-10 pb-12">
+      <div className={portrait ? 'flex h-full flex-col px-6 pt-8 pb-10' : 'flex h-full flex-col pl-14 pr-20 pt-10 pb-12'}>
         <div className="mb-6 flex items-center gap-4">
           <button
             type="button"
