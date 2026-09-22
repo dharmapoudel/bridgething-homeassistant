@@ -33,12 +33,7 @@ const MAX_ROWS_ON_SCREEN = 3;
 const MAX_ROWS_PORTRAIT = 5;
 const SWIPE_THRESHOLD_PX = 12;
 const GRID_GAP_PX = 12; // gap-3
-const GRID_BOTTOM_PAD_PX = 20; // pb-5
-const HEADER_BOTTOM_MARGIN_PX = 12; // mb-3
-const MIN_PORTRAIT_ROW_PX = 48;
-const TILE_MAX_PX = 256; // TILE_MAX_REM = 16rem
 const GRID_SIDE_PAD_PX = 48; // px-6 on both sides
-const LANDSCAPE_OVERFLOW_COL_PX = 176; // auto-cols-44 = 11rem
 
 function gridShape(count: number, portrait: boolean): { cols: number; rows: number; fits: boolean } {
   // Landscape formula is unchanged: max 4 columns, max 3 rows.
@@ -65,38 +60,16 @@ export default function Dashboard({
   // Landscape shape is the single source of truth for tile sizing: portrait
   // reuses its row count so every tile keeps its exact landscape height.
   const shape = gridShape(tiles.length, false);
-  const headerRef = useRef<HTMLDivElement>(null);
-  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
-  const [chromeH, setChromeH] = useState(92);
+  const [vpW, setVpW] = useState(() => window.innerWidth);
   useLayoutEffect(() => {
-    const measure = () => {
-      // On this device portrait is the 800x480 screen rotated: portrait width
-      // == landscape height, portrait height == landscape width.
-      setVp({ w: window.innerWidth, h: window.innerHeight });
-      const h = headerRef.current?.getBoundingClientRect().height ?? 0;
-      setChromeH(h + HEADER_BOTTOM_MARGIN_PX + GRID_BOTTOM_PAD_PX);
-    };
+    const measure = () => setVpW(window.innerWidth);
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
   }, []);
-  // Portrait tiles keep the exact landscape tile size: fixed 2-column
-  // tracks, infinite rows, vertical scroll on overflow.
-  const landscapeVw = vp.h;
-  const landscapeVh = vp.w;
-  const tileH = Math.max(
-    MIN_PORTRAIT_ROW_PX,
-    (landscapeVh - chromeH - GRID_GAP_PX * (shape.rows - 1)) / shape.rows,
-  );
-  const landscapeTileW = shape.fits
-    ? (Math.min(landscapeVw, shape.cols * TILE_MAX_PX + (shape.cols - 1) * GRID_GAP_PX + GRID_SIDE_PAD_PX) -
-        GRID_SIDE_PAD_PX -
-        GRID_GAP_PX * (shape.cols - 1)) /
-      shape.cols
-    : LANDSCAPE_OVERFLOW_COL_PX;
-  // Two columns must always fit the portrait viewport; shrink only when a
-  // landscape tile is wider than half the screen (small tile counts).
-  const tileW = Math.min(landscapeTileW, (vp.w - GRID_SIDE_PAD_PX - GRID_GAP_PX) / 2);
+  // Portrait: exactly 2 columns; each tile is square — its height equals
+  // its own width. Infinite rows, vertical scroll on overflow.
+  const portraitTile = (vpW - GRID_SIDE_PAD_PX - GRID_GAP_PX) / 2;
   const [colorPicker, setColorPicker] = useState<{ entityId: string; state: HaState } | null>(null);
   const openColorPicker = useCallback(
     (entityId: string, state: HaState) => setColorPicker({ entityId, state }),
@@ -106,7 +79,7 @@ export default function Dashboard({
 
   return (
     <div className="relative flex h-full w-full flex-col bg-bg text-off-white">
-      <header ref={headerRef} className="mb-3 flex items-center justify-between border-b border-rule px-6 pt-4 pb-2">
+      <header className="mb-3 flex items-center justify-between border-b border-rule px-6 pt-4 pb-2">
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-eyebrow tracking-[0.25em] text-dim uppercase">home assistant</span>
           {status.kind !== 'ready' && <span className="font-mono text-hint text-warn">{statusLabel(status)}</span>}
@@ -122,8 +95,8 @@ export default function Dashboard({
         <div
           className="grid min-h-0 w-full flex-1 content-start justify-center gap-3 overflow-y-auto px-6 pb-5"
           style={{
-            gridTemplateColumns: `repeat(2, ${tileW}px)`,
-            gridAutoRows: `${tileH}px`,
+            gridTemplateColumns: `repeat(2, ${portraitTile}px)`,
+            gridAutoRows: `${portraitTile}px`,
           }}>
           {tiles.map(t => (
             <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
