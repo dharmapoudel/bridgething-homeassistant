@@ -33,7 +33,12 @@ const MAX_ROWS_ON_SCREEN = 3;
 const MAX_ROWS_PORTRAIT = 5;
 const SWIPE_THRESHOLD_PX = 12;
 const GRID_GAP_PX = 12; // gap-3
+const GRID_BOTTOM_PAD_PX = 20; // pb-5
+const HEADER_BOTTOM_MARGIN_PX = 12; // mb-3
+const MIN_PORTRAIT_ROW_PX = 48;
+const TILE_MAX_PX = 256; // TILE_MAX_REM = 16rem
 const GRID_SIDE_PAD_PX = 48; // px-6 on both sides
+const LANDSCAPE_OVERFLOW_COL_PX = 176; // auto-cols-44 = 11rem
 
 function gridShape(count: number, portrait: boolean): { cols: number; rows: number; fits: boolean } {
   // Landscape formula is unchanged: max 4 columns, max 3 rows.
@@ -57,19 +62,47 @@ export default function Dashboard({
 }: Props) {
   const live = tiles.some(t => t.state);
   const portrait = useIsPortrait();
-  // Landscape shape is the single source of truth for tile sizing: portrait
-  // reuses its row count so every tile keeps its exact landscape height.
+  // The daemon pins the viewport at 800x480 in every rotation and rotates
+  // the page root with a CSS transform, so window dimensions never describe
+  // portrait: the landscape reference is recovered via max/min, and the
+  // real layout width is read from the pinned <html> element (480x800 in
+  // portrait). Re-measured when the orientation flips.
+  const refW = Math.max(window.innerWidth, window.innerHeight);
+  const refH = Math.min(window.innerWidth, window.innerHeight);
   const shape = gridShape(tiles.length, false);
-  const [vpW, setVpW] = useState(() => window.innerWidth);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [layoutW, setLayoutW] = useState(
+    () => document.documentElement.clientWidth || window.innerWidth,
+  );
+  const [chromeH, setChromeH] = useState(92);
   useLayoutEffect(() => {
-    const measure = () => setVpW(window.innerWidth);
+    const measure = () => {
+      setLayoutW(document.documentElement.clientWidth || window.innerWidth);
+      const h = headerRef.current?.getBoundingClientRect().height ?? 0;
+      setChromeH(h + HEADER_BOTTOM_MARGIN_PX + GRID_BOTTOM_PAD_PX);
+    };
     measure();
     window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, []);
-  // Portrait: exactly 2 columns; each tile is square — its height equals
-  // its own width. Infinite rows, vertical scroll on overflow.
-  const portraitTile = (vpW - GRID_SIDE_PAD_PX - GRID_GAP_PX) / 2;
+    window.addEventListener('load', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('load', measure);
+    };
+  }, [portrait]);
+  // Portrait: 2 columns, as many rows as needed. Tiles keep the original
+  // landscape width and height; the width shrinks only when two original
+  // tiles cannot fit the portrait layout width (small tile counts).
+  const tileH = Math.max(
+    MIN_PORTRAIT_ROW_PX,
+    (refH - chromeH - GRID_GAP_PX * (shape.rows - 1)) / shape.rows,
+  );
+  const landscapeTileW = shape.fits
+    ? (Math.min(refW, shape.cols * TILE_MAX_PX + (shape.cols - 1) * GRID_GAP_PX + GRID_SIDE_PAD_PX) -
+        GRID_SIDE_PAD_PX -
+        GRID_GAP_PX * (shape.cols - 1)) /
+      shape.cols
+    : LANDSCAPE_OVERFLOW_COL_PX;
+  const tileW = Math.min(landscapeTileW, (layoutW - GRID_SIDE_PAD_PX - GRID_GAP_PX) / 2);
   const [colorPicker, setColorPicker] = useState<{ entityId: string; state: HaState } | null>(null);
   const openColorPicker = useCallback(
     (entityId: string, state: HaState) => setColorPicker({ entityId, state }),
@@ -79,7 +112,7 @@ export default function Dashboard({
 
   return (
     <div className="relative flex h-full w-full flex-col bg-bg text-off-white">
-      <header className="mb-3 flex items-center justify-between border-b border-rule px-6 pt-4 pb-2">
+      <header ref={headerRef} className="mb-3 flex items-center justify-between border-b border-rule px-6 pt-4 pb-2">
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-eyebrow tracking-[0.25em] text-dim uppercase">home assistant</span>
           {status.kind !== 'ready' && <span className="font-mono text-hint text-warn">{statusLabel(status)}</span>}
@@ -95,8 +128,8 @@ export default function Dashboard({
         <div
           className="grid min-h-0 w-full flex-1 content-start justify-center gap-3 overflow-y-auto px-6 pb-5"
           style={{
-            gridTemplateColumns: `repeat(2, ${portraitTile}px)`,
-            gridAutoRows: `${portraitTile}px`,
+            gridTemplateColumns: `repeat(2, ${tileW}px)`,
+            gridAutoRows: `${tileH}px`,
           }}>
           {tiles.map(t => (
             <TileView key={t.entityId} tile={t} onActivate={onActivate} onSetTemp={onSetTemp} onSetBrightness={onSetBrightness} onSetColor={onSetColor} onOpenColorPicker={openColorPicker} />
