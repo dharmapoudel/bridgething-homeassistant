@@ -82,11 +82,16 @@ export default function Dashboard({
       setChromeH(h + HEADER_BOTTOM_MARGIN_PX + GRID_BOTTOM_PAD_PX);
     };
     measure();
-    window.addEventListener('resize', measure);
+    // rotation.js pins <html> to the portrait layout box on
+    // DOMContentLoaded, which fires after this effect on a cold start in
+    // portrait — re-measure then so the first paint already fits.
+    document.addEventListener('DOMContentLoaded', measure);
     window.addEventListener('load', measure);
+    window.addEventListener('resize', measure);
     return () => {
-      window.removeEventListener('resize', measure);
+      document.removeEventListener('DOMContentLoaded', measure);
       window.removeEventListener('load', measure);
+      window.removeEventListener('resize', measure);
     };
   }, [portrait]);
   // Portrait: 2 columns, as many rows as needed. Tiles keep the original

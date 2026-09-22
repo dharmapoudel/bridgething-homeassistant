@@ -37,6 +37,9 @@ export function useIsPortrait(): boolean {
     } catch {
       /* listeners unavailable */
     }
+    // Cold start in portrait: screen.orientation may not be settled on
+    // first render; re-check once the page finishes loading.
+    window.addEventListener('load', update);
     return () => {
       try {
         orientation?.removeEventListener('change', update);
@@ -44,6 +47,7 @@ export function useIsPortrait(): boolean {
       } catch {
         /* ignore */
       }
+      window.removeEventListener('load', update);
     };
   }, []);
 
