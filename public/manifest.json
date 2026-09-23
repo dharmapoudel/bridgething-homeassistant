@@ -1,7 +1,7 @@
 {
   "id": "12371786-2cdb-4c38-9c1b-7c6efd601ea8",
   "name": "Home Assistant",
-  "version": "0.9.17",
+  "version": "0.9.18",
   "description": "Live tiles and controls for a handful of your Home Assistant entities.",
   "icon": "icon.svg",
   "config": [

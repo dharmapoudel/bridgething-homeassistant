@@ -72,23 +72,30 @@ export default function Dashboard({
   const shape = gridShape(tiles.length, false);
   const headerRef = useRef<HTMLDivElement>(null);
   const [layoutW, setLayoutW] = useState(
-    () => document.documentElement.clientWidth || window.innerWidth,
+    () => document.body?.clientWidth || document.documentElement.clientWidth || window.innerWidth,
   );
   const [chromeH, setChromeH] = useState(92);
   useLayoutEffect(() => {
     const measure = () => {
-      setLayoutW(document.documentElement.clientWidth || window.innerWidth);
-      const h = headerRef.current?.getBoundingClientRect().height ?? 0;
+      setLayoutW(
+        document.body?.clientWidth || document.documentElement.clientWidth || window.innerWidth,
+      );
+      const h = headerRef.current?.offsetHeight ?? 0;
       setChromeH(h + HEADER_BOTTOM_MARGIN_PX + GRID_BOTTOM_PAD_PX);
     };
     measure();
-    // rotation.js pins <html> to the portrait layout box on
-    // DOMContentLoaded, which fires after this effect on a cold start in
-    // portrait — re-measure then so the first paint already fits.
+    // rotation.js pins <html> to the rotated layout box by setting inline
+    // styles. On a cold start that pin can land after DOMContentLoaded
+    // and load have already fired, with no resize or orientation change
+    // to follow — so observe the root element itself: any pin landing
+    // or changing always re-measures instead of trusting event timing.
+    const mo = new MutationObserver(measure);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     document.addEventListener('DOMContentLoaded', measure);
     window.addEventListener('load', measure);
     window.addEventListener('resize', measure);
     return () => {
+      mo.disconnect();
       document.removeEventListener('DOMContentLoaded', measure);
       window.removeEventListener('load', measure);
       window.removeEventListener('resize', measure);

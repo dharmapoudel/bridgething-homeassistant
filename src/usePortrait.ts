@@ -40,6 +40,11 @@ export function useIsPortrait(): boolean {
     // Cold start in portrait: screen.orientation may not be settled on
     // first render; re-check once the page finishes loading.
     window.addEventListener('load', update);
+    // The daemon pins <html> to the rotated layout box via inline styles
+    // (rotation.js), possibly after load on a cold start. Re-check
+    // orientation whenever that pin lands or changes.
+    const mo = new MutationObserver(update);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     return () => {
       try {
         orientation?.removeEventListener('change', update);
@@ -48,6 +53,7 @@ export function useIsPortrait(): boolean {
         /* ignore */
       }
       window.removeEventListener('load', update);
+      mo.disconnect();
     };
   }, []);
 
